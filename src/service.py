@@ -60,7 +60,8 @@ class CurrencyExchangeServices:
                 )
                 await self.db.execute(stmt)
                 await self.db.commit()
-                return len(data_list), last_refreshed_at
+                
+                return await self.get_all()
         except Exception as e:
             app_error.error(f"Error Encoutered while updating the Database: {e}")
             await self.db.rollback()
@@ -126,6 +127,10 @@ class CurrencyExchangeServices:
         result = await self.db.execute(stmt)
         await self.db.commit()
         return result.rowcount
+    
+    async def get_all(self):
+        result = await self.db.scalars(select(CurrencyExchange))
+        return result.all()
 
 
 def get_curreny_exchange_service(db: db):

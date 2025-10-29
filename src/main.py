@@ -37,7 +37,7 @@ register_exc(app)
 
 
 
-@app.post("/countries/refresh", response_model=DataStatus, status_code=status.HTTP_201_CREATED)
+@app.post("/countries/refresh", response_model=ListCountriesData, status_code=status.HTTP_201_CREATED)
 async def insert_or_update_data(currency_exchange: currency_exchange_service):
     result = await currency_exchange.update_econ_data()
     if not result:
@@ -48,7 +48,7 @@ async def insert_or_update_data(currency_exchange: currency_exchange_service):
     orm = await currency_exchange.data_summary()
     text = process_orm_to_text(orm)
     create_image(text)
-    return {"total_countries": result[0], "last_refreshed_at": result[1]}
+    return ListCountriesData(data_list=result)
 
 
 @app.get("/countries", response_model=ListCountriesData)
