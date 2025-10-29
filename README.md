@@ -1,4 +1,3 @@
-````markdown
 # 🌍 Country Currency & Exchange API — Implementation Overview
 
 ## 🚀 Project Summary
