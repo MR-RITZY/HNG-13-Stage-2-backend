@@ -1,6 +1,7 @@
 from httpx import AsyncClient
 import random
 from typing import List
+from datetime import datetime
 
 from src.log import app_error, app_info
 
@@ -20,16 +21,18 @@ async def get_api(url: str):
         app_error.error(
             f"Unable to Connect to or get data from the specified URL: {url}"
         )
-        return None
 
 
-async def get_and_compute_countries_data():
+async def get_and_compute_countries_data(last_refreshed_at: datetime):
     countries_data_list = []
     countries_data = await get_api(countries_data_url)
     exchange_rate_data = await get_api(exchange_rate_url)
-    exchange_rates = exchange_rate_data.get("rates")
-    if not countries_data or not exchange_rate_data or not exchange_rates:
+    if not countries_data or not exchange_rate_data:
         return None
+    exchange_rates = exchange_rate_data.get("rates")
+    if not exchange_rates:
+        return None
+
     for data in countries_data:
         name = data.get("name")
         population = data.get("population")
@@ -59,20 +62,20 @@ async def get_and_compute_countries_data():
             "exchange_rate": exchange_rate,
             "estimated_gdp": estimated_gdp,
             "flag_url": data.get("flag"),
+            "last_refreshed_at": last_refreshed_at,
         }
         countries_data_list.append(country_data)
     return countries_data_list
 
 
 def process_orm_to_text(result: List):
-    total_count = result[0].total_count
-    last_refresh = result[0].last_time_refresh.isoformat()
-    text_output = (
-        "Top 5 Countries with the Highest GDP (Descending Order)\n"
-        "========================================================\n"
-    )
+    if not result:
+        return "No data available"
 
-    # Column titles (adjust width specifiers for alignment)
+    total_count = getattr(result[0], "total_count", None) or 0
+    last_refresh_obj = getattr(result[0], "last_time_refresh", None)
+    last_refresh = last_refresh_obj.isoformat() if last_refresh_obj else "N/A"
+
     text_output = (
         "Top 5 Countries with the Highest GDP (Descending Order)\n"
         + "=" * 100 + "\n"
@@ -86,27 +89,37 @@ def process_orm_to_text(result: List):
 
     for i, row in enumerate(result, start=1):
         country = row.CurrencyExchange
+        name = (country.name or "")[:24]
+        capital = (country.capital or "")[:11]
+        region = (country.region or "")[:11]
+        population = int(country.population) if country.population else 0
+        currency_code = country.currency_code or ""
+        estimated_gdp = float(country.estimated_gdp) if country.estimated_gdp else 0.0
+
         text_output += (
             f"{i:<4}"
-            f"{country.name[:24]:<40}"
-            f"{country.capital[:11]:<20}"
-            f"{country.region[:11]:<20}"
-            f"{int(country.population):<20,}"
-            f"{country.currency_code:<20}"
-            f"{float(country.estimated_gdp):<20,.2f}\n"
+            f"{name:<40}"
+            f"{capital:<20}"
+            f"{region:<20}"
+            f"{population:<20,}"
+            f"{currency_code:<20}"
+            f"{estimated_gdp:<20,.2f}\n"
         )
 
     text_output += "=" * 100 + "\n"
     text_output += f"Total Countries: {total_count}\n"
-    text_output += f"Highest GDP: {last_refresh:>12}\n"
+    text_output += f"Last Refreshed At: {last_refresh}\n"
 
     return text_output
 
 
 def strip_orders(string: str):
-    for i in ["asc_", "desc_"]:
-        if string.startswith(i):
-            return string.lstrip(i)
-    for i in ["_asc", "_desc"]:
-        if string.endswith(i):
-            return string.rstrip(i)
+    if string.startswith("asc_"):
+        return string[len("asc_"):]
+    if string.startswith("desc_"):
+        return string[len("desc_"):]
+    if string.endswith("_asc"):
+        return string[:-len("_asc")]
+    if string.endswith("_desc"):
+        return string[:-len("_desc")]
+    return string

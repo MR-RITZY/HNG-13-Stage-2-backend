@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.mysql import insert
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, asc, desc
 from src.db import get_db
 from fastapi import Depends
 from typing import Annotated
@@ -44,8 +44,8 @@ class CurrencyExchangeServices:
 
     async def update_econ_data(self):
         try:
-            data_list = await get_and_compute_countries_data()
             last_refreshed_at = datetime.now(tz=timezone.utc)
+            data_list = await get_and_compute_countries_data(last_refreshed_at)
             if data_list:
                 stmt = insert(CurrencyExchange).values(data_list)
                 stmt = stmt = stmt.on_duplicate_key_update(
@@ -62,6 +62,7 @@ class CurrencyExchangeServices:
                 await self.db.commit()
                 
                 return await self.get_all()
+            return []
         except Exception as e:
             app_error.error(f"Error Encoutered while updating the Database: {e}")
             await self.db.rollback()
@@ -70,18 +71,27 @@ class CurrencyExchangeServices:
         filter_list = []
         for key, value in conditions.items():
             if value and key != "sort":
-                filter = filter_map[key](value)
-                filter_list.append(filter)
+                if isinstance(value, str):
+                    value = value.lower()
+                filter_item = filter_map[key](value)
+                filter_list.append(filter_item)
         stmt = select(CurrencyExchange)
-        if conditions.get("sort"):
-            sort = conditions["sort"]
-            sort_string = strip_orders(sort)
-            stmt = stmt.where(*filter_list).order_by(field_map[sort_string])
+        sort_val = conditions.get("sort")
+        if sort_val:
+            s = sort_val
+            field_name = strip_orders(s)
+            if s.startswith("asc_") or s.endswith("_asc"):
+                stmt = stmt.where(*filter_list).order_by(asc(field_map[field_name]))
+            elif s.startswith("desc_") or s.endswith("_desc"):
+                stmt = stmt.where(*filter_list).order_by(desc(field_map[field_name]))
+            else:
+                stmt = stmt.where(*filter_list)
         else:
             stmt = stmt.where(*filter_list)
         result = await self.db.scalars(stmt)
         return result.all()
-
+    
+    
     async def get_country_by_name(self, name: str):
         scalar_result = await self.db.scalars(
             select(CurrencyExchange).where(CurrencyExchange.name == name)

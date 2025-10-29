@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, status, Query
 from contextlib import asynccontextmanager, AsyncExitStack
-from typing import Annotated, Optional
+from typing import Annotated, Optional, List
 from fastapi.responses import FileResponse, Response
 import os.path
 
@@ -10,7 +10,7 @@ from src.log import app_info
 from src.db import db_lifespan
 from src.exc import ServiceUnavailableError, DataNotFoundException, register_exc
 from src.service import get_curreny_exchange_service, CurrencyExchangeServices
-from src.schema import ListCountriesData, DataStatus, CountryData
+from src.schema import DataStatus, CountryData
 from src.utils import process_orm_to_text
 
 currency_exchange_service = Annotated[
@@ -37,7 +37,7 @@ register_exc(app)
 
 
 
-@app.post("/countries/refresh", response_model=ListCountriesData, status_code=status.HTTP_201_CREATED)
+@app.post("/countries/refresh", response_model=List[CountryData], status_code=status.HTTP_201_CREATED)
 async def insert_or_update_data(currency_exchange: currency_exchange_service):
     result = await currency_exchange.update_econ_data()
     if not result:
@@ -48,10 +48,10 @@ async def insert_or_update_data(currency_exchange: currency_exchange_service):
     orm = await currency_exchange.data_summary()
     text = process_orm_to_text(orm)
     create_image(text)
-    return ListCountriesData(data_list=result)
+    return result
 
 
-@app.get("/countries", response_model=ListCountriesData)
+@app.get("/countries", response_model=List[CountryData])
 async def get_countries(
     currency_exchange: currency_exchange_service,
     name: Optional[str] = Query(None),
@@ -82,7 +82,7 @@ async def get_countries(
         "min_rate": min_rate,
         "max_rate": max_rate,
         "gdp": gdp,
-        "max_gdp": min_gdp,
+        "min_gdp": min_gdp,
         "max_gdp": max_gdp,
         "sort": sort,
     }
@@ -91,7 +91,7 @@ async def get_countries(
         raise DataNotFoundException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Match Not Found"
         )
-    return ListCountriesData(data_list=data)
+    return data
 
 
 @app.get("/countries/image")
@@ -117,7 +117,9 @@ async def get_country_by_name(name: str, currency_exchange: currency_exchange_se
 @app.get("/status", response_model=DataStatus)
 async def get_status(currency_exchange: currency_exchange_service):
     result = await currency_exchange.get_data_status()
-    return DataStatus(total_countries=result[0], last_refreshed_at=result[1])
+    total = result[0] if result else 0
+    last = result[1] if result else None
+    return DataStatus(total_countries=total, last_refreshed_at=last)
 
 
 

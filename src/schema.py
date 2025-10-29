@@ -24,8 +24,4 @@ class CountryData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class ListCountriesData(BaseModel):
-    data_list: List[CountryData]
-
-    model_config = ConfigDict(from_attributes=True)
 
